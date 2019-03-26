@@ -214,9 +214,8 @@ software tools,” Atmos. Environ., vol. 37, no. 36, pp. 5097–5114, 2003.
 differential algebraic equations of index 1,” in BIT Numerical Mathematics,
 2005, vol. 45, no. 4, pp. 761–787.
 
-[3] E. Novikov, Y. Shitov, and Y. Shokin, “On the solution of optimization
-problems in transport networks, Soft-ware fox solving optimal planning
-problems,” Mir, 1980.
+[3] E. Novikov, Y. Shitov, and Y. Shokin, “A class of (m,k)-methods for solving
+stiff systems,” Zh.vychisl.Mat.Fiz., vol. 29, no. 2, pp. 194–201, 1989.
 
 [4] S. Hossain and T. Steihaug, “Optimal direct determination of sparse Jacobian
 matrices,” Optim. Methods Softw., vol. 28, no. 6, pp. 1218–1232, 2013.
