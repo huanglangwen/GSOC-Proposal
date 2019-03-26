@@ -1,4 +1,4 @@
-* Rosenbrock-W algorithm with better Jacobian reuse mechanism and sparse Jacobian support 
+* Implicit Runge-Kutta algorithms with more robust Jacobian reuse mechanism and sparse Jacobian support
 ** Abstract 
 Implicit solvers in OrdinaryDiffEq.jl are facing performance issues on some
 large ODEs due to evaluating and decomposing the Jacobian matrix too frequently.
