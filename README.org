@@ -3,11 +3,11 @@
 Implicit solvers in OrdinaryDiffEq.jl are facing performance issues on some
 large ODEs due to evaluating and decomposing the Jacobian matrix too frequently.
 My GSOC project aims to address such issues in two ways: One is to develop the
-Rosenbrock-W(ROSW) method which is tolerant of the Jacobian accuracy and to
+Rosenbrock-W(ROSW) method which is tolerant of the Jacobian inaccuracy and to
 improve the Jacobian reuse  mechanism making it less conservative for large
 ODEs; Another way is to exploit the sparsity inside many large scale ODEs by
-evaluating 'orthogonal' columns in the sparse Jacobian matrix simultaneously and
-emitting Jacobian matrix in sparse form. 
+perturbing in multiple orthogonal directions of the sparse Jacobian matrix
+simultaneously and emitting Jacobian matrix in sparse form. 
 
 ** Introduction
 Implicit solvers in OrdinaryDiffEq.jl usually spend significant proportions of
@@ -18,11 +18,12 @@ implies the possibility to improve the performance by better reusing the
 Jacobian matrix.
 
 Luckily, the ROSW method has the potential to reduce the number of Jacobian
-evaluations. It has a higher tolerance for the accuracy of the Jacobian matrix
-while keeping a comparable order as other Rosenbrock methods. Therefore, it
-doesn't have to evaluate the Jacobian matrix frequently in order to keep it
-accurate. ODEs whose Jacobian is too hard to evaluate (REF) also benefit from
-this as they can provide a portion of the matrix (filling the rest with zeros). 
+evaluations while minimizing the number of forward/backward substitutions. It
+has a higher tolerance for the inaccuracy of the Jacobian matrix while keeping a
+comparable order as other Rosenbrock methods. Therefore, it doesn't have to
+evaluate the Jacobian matrix frequently in order to keep its accuracy. ODEs whose
+Jacobian is too hard to evaluate (REF) also benefit from this as they can
+provide a portion of the matrix (filling the rest with zeros). 
 
 Further performance improvements can be achieved through exploiting the sparsity
 of the Jacobian matrix that many large ODE problems share. Differentiation tools
@@ -44,16 +45,16 @@ others. I won't pursue more fancy features than those proposed in order to
 optimize their robustness, API usability, and documentation. 
 
 *** Goal 1: Better Tooling for Rosenbrock & SDIRK methods 
-Currently, adding a new Rosenbrock or SDIRK method require manually writing the
-stepping process which has a common structure. A better approach would be to
-write a general Rosenbrock/SDIRK stepping routine that directly takes the
-tableau to produce the intended stepping as it would make adding new algorithms
-(especially for Rosenbrock-W method) a lot easier while enjoying the benefits
-from optimization and refactoring of the general method. I will also improve the
-interpolation methods for Rosenbrock & SDIRK methods as some of them have
-special higher order (>3) interpolations suggested by the papers. Additionally,
-I will update documents on adding new Rosenbrock/SDIRK schemes the general
-method. 
+Currently, adding a new Rosenbrock or Singly-Diagonally-Implicit Runge-Kutta
+(SDIRK) method require manually writing the stepping process which has a common
+structure. A better approach would be to write a general Rosenbrock/SDIRK
+stepping routine that directly takes the tableau to produce the intended
+stepping as it would make adding new algorithms (especially for Rosenbrock-W
+method) a lot easier while enjoying the benefits from optimization and
+refactoring of the general method. I will also improve the interpolation methods
+for Rosenbrock & SDIRK methods as some of them have special higher order (>3)
+interpolations suggested by the papers. Additionally, I will update documents on
+adding new Rosenbrock/SDIRK schemes the general method. 
 
 **** Implementation Details 
 There is a general Rosenbrock method (general_rosenbrock_perform_step.jl)
@@ -74,9 +75,9 @@ tableaus:
 2. Novikov, Shitov and Shokin's paper of (m,k)-ROSW methods 
 3. Petsc's ROSW code which is (partially) based on Rang and Angermann's paper
 
-I will implement all of the available tableaus listed above and compare their
+I will implement all of the available tableaux listed above and compare their
 performances. In order to test their correctness and order of accuracy, I will
-add more test scenarios like non-autonomous ODEs and multivariate ODEs which is
+add more test scenarios like non-autonomous ODEs and multivariate ODEs which are
 more representative than the current test of univariate autonomous ODE. 
 
 *** Goal 3: Sparse Jacobian Handling 
@@ -93,17 +94,16 @@ sparse Jacobians: mauro3's MatrixColorings.jl package
 
 **** Implementation Details 
 The sparsity pattern can be either supplied by the user in the form of a sparse
-matrix or by evaluating the Jacobian matrix at the initial point and chopping
-off those sufficiently small values as zeros. Once having the sparse matrix, a
-column intersection graph can be built where columns are vertices and two
-vertices are connected when respective columns share at least one nonzero row.
-Then the colouring algorithm can be applied to the graph to find out a colouring
-scheme that every edge have vertices of different colours, and the set of
-columns with the same colour is the intended set. While simply assigning
-vertices with different colours certainly makes a solution, finding out the
-optimal scheme that minimizes the number of colours is a NP-Complete problem. So
-instead of finding the optimal solution, A heuristic algorithm is used to find a
-"good enough" result.
+matrix or by evaluating the Jacobian matrix at a randomly perturbed initial
+point. Once having the Jacobian matrix, a column intersection graph can be built
+where columns are vertices and two vertices are connected when respective
+columns share at least one nonzero row. Then the colouring algorithm can be
+applied to the graph to find out a colouring scheme that every edge have
+vertices of different colours, and the set of columns with the same colour is
+the intended set. While simply assigning vertices with different colours
+certainly makes a solution, finding out the optimal scheme that minimizes the
+number of colours is a NP-Complete problem. So instead of finding the optimal
+solution, A heuristic algorithm is used to find a "good enough" result.
 
 Then, I will modify the differentiation process to differentiate variables with
 the same colour simultaneously. Typically, the differentiation process of
@@ -124,11 +124,11 @@ Kennedy and Carpenter's review on DIRK also mentioned some advanced Jacobian
 reuse method. However, both CVODE and the paper only have reuse algorithm for
 implicit with Newton's method where both number of iteration steps and local
 error can be used to determine whether to reuse the Jacobian matrix, while in
-Rosenbrock method we only have one factor-local error. As a result, I believe it
-is better to start from implementing reuse method of implicit solvers with
-Newton's method according to CVODE's code and Kennedy&Carpenter's paper. Then, I
-will try to improve the reuse method for Rosenbrock solvers based on experiments
-and previous experiences. 
+Rosenbrock method we only have one factor: the estimate of local truncation
+error. As a result, I believe it is better to start from implementing reuse
+method of implicit solvers with Newton's method according to CVODE's code and
+Kennedy&Carpenter's paper. Then, I will try to improve the reuse method for
+Rosenbrock solvers based on experiments and previous experiences. 
 
 ** Potential Difficulties 
 It is difficult to write a decent Jacobian reuse algorithm since the Jacobian
