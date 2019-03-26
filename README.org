@@ -22,7 +22,7 @@ evaluations while minimizing the number of forward/backward substitutions. It
 has a higher tolerance for the inaccuracy of the Jacobian matrix while keeping a
 comparable order as other Rosenbrock methods. Therefore, it doesn't have to
 evaluate the Jacobian matrix frequently in order to keep its accuracy. ODEs whose
-Jacobian is too hard to evaluate (REF) also benefit from this as they can
+Jacobian is too hard to evaluate [1] also benefit from this as they can
 provide a portion of the matrix (filling the rest with zeros). 
 
 Further performance improvements can be achieved through exploiting the sparsity
@@ -71,8 +71,8 @@ Thanks to the previous work on the general Rosenbrock method, I only need to add
 the tableau of adaptive ROSW method. There are 3 places that have adaptive ROSW
 tableaus: 
 
-1. Rang and Angermann's paper on 3rd order ROSW for partial DAE 
-2. Novikov, Shitov and Shokin's paper of (m,k)-ROSW methods 
+1. Rang and Angermann's paper [2] on 3rd order ROSW for partial DAE 
+2. Novikov, Shitov and Shokin's paper [3] of (m,k)-ROSW methods 
 3. Petsc's ROSW code which is (partially) based on Rang and Angermann's paper
 
 I will implement all of the available tableaux listed above and compare their
@@ -87,7 +87,7 @@ the ODE system, if there exists a set of columns in the sparse Jacobian matrix
 that has totally different nonzero rows, that set of columns can be evaluated at
 the same time. Such sets can be found using matrix colouring algorithm described
 in Hossain & Steihaug's paper "Optimal Direct determination of sparse Jacobian
-matrices". There are also two implementations of matrix colouring algorithm for
+matrices" [4]. There are also two implementations of matrix colouring algorithm for
 sparse Jacobians: mauro3's MatrixColorings.jl package
 (https://github.com/mauro3/MatrixColorings.jl) and Petsc's matrix colouring code
 (https://www.mcs.anl.gov/petsc/petsc-current/src/mat/color/interface/matcoloring.c.html).
@@ -120,7 +120,7 @@ option will be added on whether to produce the Jacobian matrix in sparse form.
 Jacobian reuse is critical for the performance of ROSW method and other implicit
 methods. The current reuse method in OrdinaryDiffEq.jl is rather conservative
 especially for large ODEs compared to some established ODE solvers like CVODE.
-Kennedy and Carpenter's review on DIRK also mentioned some advanced Jacobian
+Kennedy and Carpenter's review [5] on DIRK also mentioned some advanced Jacobian
 reuse method. However, both CVODE and the paper only have reuse algorithm for
 implicit with Newton's method where both number of iteration steps and local
 error can be used to determine whether to reuse the Jacobian matrix, while in
@@ -204,3 +204,22 @@ variables, so the performance of the ODE solver is a great concern to me.
 *** Contact Information
 - Email: huanglangwen@outlook.com
 - Github: huanglangwen
+
+** Reference
+[1] A. Sandu, D. N. Daescu, and G. R. Carmichael, “Direct and adjoint
+sensitivity analysis of chemical kinetic systems with KPP: I - theory and
+software tools,” Atmos. Environ., vol. 37, no. 36, pp. 5097–5114, 2003.
+
+[2] J. Rang and L. Angermann, “New Rosenbrock W-methods of order 3 for partial
+differential algebraic equations of index 1,” in BIT Numerical Mathematics,
+2005, vol. 45, no. 4, pp. 761–787.
+
+[3] E. Novikov, Y. Shitov, and Y. Shokin, “On the solution of optimization
+problems in transport networks, Soft-ware fox solving optimal planning
+problems,” Mir, 1980.
+
+[4] S. Hossain and T. Steihaug, “Optimal direct determination of sparse Jacobian
+matrices,” Optim. Methods Softw., vol. 28, no. 6, pp. 1218–1232, 2013.
+
+[5] C. A. Kennedy and M. H. Carpenter, “Diagonally Implicit Runge-Kutta Methods
+for Ordinary Differential Equations. A Review,” 2016.
