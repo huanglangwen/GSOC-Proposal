@@ -116,7 +116,7 @@ to the sparsity pattern. As looping through the sets produced by colouring
 algorithm, we stack all the retrieved columns to form the Jacobian matrix. An
 option will be added on whether to produce the Jacobian matrix in sparse form.
 
-*** Goal 4: Jacobian reuse 
+*** Stretch Goal: Jacobian reuse 
 Jacobian reuse is critical for the performance of ROSW method and other implicit
 methods. The current reuse method in OrdinaryDiffEq.jl is rather conservative
 especially for large ODEs compared to some established ODE solvers like CVODE.
