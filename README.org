@@ -1,16 +1,18 @@
 * Implicit Runge-Kutta algorithms with more robust Jacobian reuse mechanism and sparse Jacobian support
 ** Abstract 
-Implicit solvers in OrdinaryDiffEq.jl are facing performance issues on some
+Implicit solvers in ~OrdinaryDiffEq.jl~ are facing performance issues on some
 large ODEs due to evaluating and decomposing the Jacobian matrix too frequently.
-My GSOC project aims to address such issues in two ways: One is to develop the
+My GSOC project aims to address such issues in three ways: One is to develop the
 Rosenbrock-W(ROSW) method which is tolerant of the Jacobian inaccuracy and to
-improve the Jacobian reuse  mechanism making it less conservative for large
-ODEs; Another way is to exploit the sparsity inside many large scale ODEs by
+improve the Jacobian reuse mechanism making it less conservative for large ODEs;
+Another way is to exploit the sparsity inside many large scale ODEs by
 perturbing in multiple orthogonal directions of the sparse Jacobian matrix
-simultaneously and emitting Jacobian matrix in sparse form. 
+simultaneously and emitting Jacobian matrix in sparse form. I will also attempt
+to implement a parallel Rosenbrock method to utilise the full computing power of
+multicore CPUs and GPUs.
 
 ** Introduction
-Implicit solvers in OrdinaryDiffEq.jl usually spend significant proportions of
+Implicit solvers in ~OrdinaryDiffEq.jl~ usually spend significant proportions of
 time in solving linear systems when solving large ODEs. The amount of Jacobian
 evaluations associated with solving linear systems in those solvers often far
 exceeds the CVODE_BDF solver when solving a specific large ODE system, which
@@ -27,7 +29,7 @@ provide a portion of the matrix (filling the rest with zeros).
 
 Further performance improvements can be achieved through exploiting the sparsity
 of the Jacobian matrix that many large ODE problems share. Differentiation tools
-used by OrdinaryDiffEq.jl simply loop over all the inputs and collect response
+used by ~OrdinaryDiffEq.jl~ simply loop over all the inputs and collect response
 vectors one by one to form the Jacobian matrix. Assuming the sparse pattern stay
 unchanged, one can evaluate the derivative of multiple inputs at the same time
 as long as the respective columns do not share any nonzero rows, which
@@ -57,7 +59,7 @@ interpolations suggested by the papers. Additionally, I will update documents on
 adding new Rosenbrock/SDIRK schemes the general method. 
 
 **** Implementation Details 
-There is a general Rosenbrock method (general_rosenbrock_perform_step.jl)
+There is a general Rosenbrock method (~general_rosenbrock_perform_step.jl~)
 available in the code base, but it is outdated and needs to be adapted to the
 new version. It also lacks optimizations like caching for in-place rhs function
 and static expansion of loops over the tableau to reduce the overhead. I can
@@ -88,7 +90,7 @@ that has totally different nonzero rows, that set of columns can be evaluated at
 the same time. Such sets can be found using matrix colouring algorithm described
 in Hossain & Steihaug's paper "Optimal Direct determination of sparse Jacobian
 matrices" [4]. There are also two implementations of matrix colouring algorithm for
-sparse Jacobians: mauro3's MatrixColorings.jl package
+sparse Jacobians: mauro3's ~MatrixColorings.jl~ package
 (https://github.com/mauro3/MatrixColorings.jl) and Petsc's matrix colouring code
 (https://www.mcs.anl.gov/petsc/petsc-current/src/mat/color/interface/matcoloring.c.html).
 
@@ -116,11 +118,19 @@ to the sparsity pattern. As looping through the sets produced by colouring
 algorithm, we stack all the retrieved columns to form the Jacobian matrix. An
 option will be added on whether to produce the Jacobian matrix in sparse form.
 
-*** Stretch Goal: Jacobian reuse 
+*** Stretch Goal 1: Parallel Rosenbrock method
+There is a parallel Rosenbrock method available in Ponalagusamy's paper [5] with
+the potential to run on GPUs. I will implement it to expolit the parallel
+structure of multicore CPUs and GPUs. The parallel solver might need some
+special treatment, so the previous general Rosenbrock structure may not be
+applicable. If not, I would instead develop the method based on existing
+Rosenbrock methods.
+
+*** Stretch Goal 2: Jacobian reuse 
 Jacobian reuse is critical for the performance of ROSW method and other implicit
-methods. The current reuse method in OrdinaryDiffEq.jl is rather conservative
+methods. The current reuse method in ~OrdinaryDiffEq.jl~ is rather conservative
 especially for large ODEs compared to some established ODE solvers like CVODE.
-Kennedy and Carpenter's review [5] on DIRK also mentioned some advanced Jacobian
+Kennedy and Carpenter's review [6] on DIRK also mentioned some advanced Jacobian
 reuse method. However, both CVODE and the paper only have reuse algorithm for
 implicit with Newton's method where both number of iteration steps and local
 error can be used to determine whether to reuse the Jacobian matrix, while in
@@ -146,7 +156,7 @@ secondary mentor.
 
 ** Milestones 
 - *Community Bonding: April 9 --- May 16*
-	I will read codes in OrdinaryDiffEq.jl and try to be familiar with the
+	I will read codes in ~OrdinaryDiffEq.jl~ and try to be familiar with the
 	coding style of the community while keeping contact with my mentors.
 - *First Milestone --- General Rosenbrock and SDIRK solvers with new adaptive Rosenbrock-W methods: May 17 --- June 14*
 	In this period, I will implement the general Rosenbrock and SDIRK solvers,
@@ -164,14 +174,17 @@ secondary mentor.
 - *Second Evaluation: July 22 --- July 26*
 	New options will be added to the solve interface to accelerate the
 	evaluation of sparse Jacobian.
-- *Third Milestone --- Jacobian reuse algorithm for implicit methods and Rosenbrock methods: July 29 --- Aug 23*
-	I'll devote the rest of time to the improvement of Jacobian reuse algorithm.
-	I will at least port some Jacobian reuse algorithms for implicit methods
-	with my mentor Yingbo Ma. If everything goes well, I'm hoping to find some
-	good heuristics for Rosenbrock methods according to benchmarks.
+- *Third Milestone --- Parallel Rosenbrock method and Jacobian reuse algorithm: July 29 --- Aug 23*
+	I'll firstly tackle the first stretch goal of the parallel Rosenbrock method
+	in the first week. Then, I'll devote the rest of time to the improvement of
+	Jacobian reuse algorithm. I will at least port some Jacobian reuse
+	algorithms for implicit methods with my mentor Yingbo Ma. If everything goes
+	well, I'm hoping to find some good heuristics for Rosenbrock methods
+	according to benchmarks.
 - *Third Evaluation: Aug 26 --- Aug 30*
-	There will be a significant reduction of Jacobian evaluations when solving
-	large ODE problems using implicit and Rosenbrock methods.
+	There will be a parallel Rosenbrock solver available in ~OrdinaryDiffEq.jl~
+	and a significant reduction of Jacobian evaluations when solving large ODE
+	problems using implicit and Rosenbrock methods.
 
 ** Summer Logistics
 I can work 40 hours per week from mid of May to September, but I'll have about
@@ -179,21 +192,22 @@ I can work 40 hours per week from mid of May to September, but I'll have about
 hours in this project.
 
 ** Code Portfolio
-I have contributed a PR on adding a new Rosenbrock-W solver to OrdinaryDiffEq.jl:
+I have contributed a PR on adding a new Rosenbrock-W solver to ~OrdinaryDiffEq.jl~:
 - add Rosenbrock-W method 6S4O(S) (https://github.com/JuliaDiffEq/OrdinaryDiffEq.jl/pull/701)
 
 ** Deliverables
 - General Rosenbrock/SDIRK solver
 - Adaptive Rosenbrock-W solvers
+- A parallel Rosenbrock solver
 - New option for sparse matrix
-- Lower Jacobian evaluations
+- Fewer Jacobian evaluations
 
 ** About Me
 I am a final year undergraduate majored in Atmospheric Science at the University
 of Manchester. I'm probably going to the MSc program of Computing Science and
 Engineering at ETHz. I have been using Julia extensively since last year to
 develop an atmospheric chemistry box model JlBox as my final year project. The
-model invokes DifferentialEquations.jl for solving ODEs with thousands of
+model invokes ~DifferentialEquations.jl~ for solving ODEs with thousands of
 variables, so the performance of the ODE solver is a great concern to me.
 
 *** Academic Details
@@ -220,5 +234,9 @@ stiff systems,” Zh.vychisl.Mat.Fiz., vol. 29, no. 2, pp. 194–201, 1989.
 [4] S. Hossain and T. Steihaug, “Optimal direct determination of sparse Jacobian
 matrices,” Optim. Methods Softw., vol. 28, no. 6, pp. 1218–1232, 2013.
 
-[5] C. A. Kennedy and M. H. Carpenter, “Diagonally Implicit Runge-Kutta Methods
+[5] R. Ponalagusamy and K. Ponnammal, “A Parallel Fourth Order Rosenbrock
+Method: Construction, Analysis and Numerical Comparison,” Int. J. Appl. Comput.
+Math., vol. 1, no. 1, pp. 45–68, Sep. 2014.
+
+[6] C. A. Kennedy and M. H. Carpenter, “Diagonally Implicit Runge-Kutta Methods
 for Ordinary Differential Equations. A Review,” 2016.
