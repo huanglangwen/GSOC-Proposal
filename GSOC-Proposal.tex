@@ -1,0 +1,310 @@
+% Created 2019-04-03 Wed 22:52
+% Intended LaTeX compiler: pdflatex
+\documentclass[a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{grffile}
+\usepackage{longtable}
+\usepackage{wrapfig}
+\usepackage{rotating}
+\usepackage[normalem]{ulem}
+\usepackage{amsmath}
+\usepackage{textcomp}
+\usepackage{amssymb}
+\usepackage{capt-of}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{a4paper,scale=0.75}
+\hypersetup{
+colorlinks=true,
+linkcolor=blue
+}
+\author{Langwen Huang}
+\date{\today}
+\title{Implicit Runge-Kutta algorithms with more robust Jacobian reuse mechanism and sparse Jacobian support}
+\begin{document}
+
+\maketitle
+\tableofcontents
+
+\section{Abstract}
+\label{sec:org39bce53}
+Implicit solvers in \texttt{OrdinaryDiffEq.jl} are facing performance issues on some
+large ODEs due to evaluating and decomposing the Jacobian matrix too frequently.
+My GSOC project aims to address such issues in three ways: One is to develop the
+Rosenbrock-W(ROSW) method which is tolerant of the Jacobian inaccuracy and to
+improve the Jacobian reuse mechanism making it less conservative for large ODEs;
+Another way is to exploit the sparsity inside many large scale ODEs by
+perturbing in multiple orthogonal directions of the sparse Jacobian matrix
+simultaneously and emitting Jacobian matrix in sparse form. I will also attempt
+to implement a parallel Rosenbrock method to utilise the full computing power of
+multicore CPUs and GPUs.
+
+\section{Introduction}
+\label{sec:orgffb08ad}
+Implicit solvers in \texttt{OrdinaryDiffEq.jl} usually spend significant proportions of
+time in solving linear systems when solving large ODEs. The amount of Jacobian
+evaluations associated with solving linear systems in those solvers often far
+exceeds the CVODE\(_{\text{BDF}}\) solver when solving a specific large ODE system, which
+implies the possibility to improve the performance by better reusing the
+Jacobian matrix.
+
+Luckily, the ROSW method has the potential to reduce the number of Jacobian
+evaluations while minimizing the number of forward/backward substitutions. It
+has a higher tolerance for the inaccuracy of the Jacobian matrix while keeping a
+comparable order as other Rosenbrock methods. Therefore, it doesn't have to
+evaluate the Jacobian matrix frequently in order to keep its accuracy. ODEs whose
+Jacobian is too hard to evaluate \cite{one} also benefit from this as they can
+provide a portion of the matrix (filling the rest with zeros). 
+
+Further performance improvements can be achieved through exploiting the sparsity
+of the Jacobian matrix that many large ODE problems share. Differentiation tools
+used by \texttt{OrdinaryDiffEq.jl} simply loop over all the inputs and collect response
+vectors one by one to form the Jacobian matrix. Assuming the sparse pattern stay
+unchanged, one can evaluate the derivative of multiple inputs at the same time
+as long as the respective columns do not share any nonzero rows, which
+accelerates the evaluation of Jacobian matrix. It is also valuable to produce
+the sparse form of the Jacobian matrix (if it has some degree of sparsity) to
+utilise the power of sparse linear solvers like GMRES, PCG or KLU. 
+
+\section{Objectives}
+\label{sec:orgeb80cbb}
+I'll try to balance features, API usability, documentation and robustness for
+this project. I will definitely prioritize robustness over other factors because
+as a fundamental building block of scientific computing it is crucial to make
+the solver stable and fast on both small and large scale systems. Then I would
+focus on API usability and documentation making the solver easily extendible by
+others. I won't pursue more fancy features than those proposed in order to
+optimize their robustness, API usability, and documentation. 
+
+\subsection{Goal 1: Better Tooling for Rosenbrock \& SDIRK methods}
+\label{sec:orgbc3d7d9}
+Currently, adding a new Rosenbrock or Singly-Diagonally-Implicit Runge-Kutta
+(SDIRK) method require manually writing the stepping process which has a common
+structure. A better approach would be to write a general Rosenbrock/SDIRK
+stepping routine that directly takes the tableau to produce the intended
+stepping as it would make adding new algorithms (especially for Rosenbrock-W
+method) a lot easier while enjoying the benefits from optimization and
+refactoring of the general method. I will also improve the interpolation methods
+for Rosenbrock \& SDIRK methods as some of them have special higher order (>3)
+interpolations suggested by the papers. Additionally, I will update documents on
+adding new Rosenbrock/SDIRK schemes the general method. 
+
+\subsubsection{Implementation Details}
+\label{sec:org0ac3a00}
+There is a general Rosenbrock method (\texttt{general\_rosenbrock\_perform\_step.jl})
+available in the code base, but it is outdated and needs to be adapted to the
+new version. It also lacks optimizations like caching for in-place rhs function
+and static expansion of loops over the tableau to reduce the overhead. I can
+start by writing the in-place version of the perform\(_{\text{step}}\) method referencing
+other Rosenbrock methods, then adjust the code for SDIRK methods. Adding special
+interpolation methods is straightforward: simply adding new dispatches of
+\_ode\(_{\text{interpolant}}\) for the intended methods. 
+
+\subsection{Goal 2: Adaptive Rosenbrock-W algorithm}
+\label{sec:org78d2260}
+Thanks to the previous work on the general Rosenbrock method, I only need to add
+the tableau of adaptive ROSW method. There are 3 places that have adaptive ROSW
+tableaus: 
+
+\begin{enumerate}
+\item Rang and Angermann's paper \cite{two} on 3rd order ROSW for partial DAE
+\item Novikov, Shitov and Shokin's paper \cite{three} of (m,k)-ROSW methods
+\item Petsc's ROSW code which is (partially) based on Rang and Angermann's paper
+\end{enumerate}
+
+I will implement all of the available tableaux listed above and compare their
+performances. In order to test their correctness and order of accuracy, I will
+add more test scenarios like non-autonomous ODEs and multivariate ODEs which are
+more representative than the current test of univariate autonomous ODE. 
+
+\subsection{Goal 3: Sparse Jacobian Handling}
+\label{sec:org2bbde4a}
+I will improve the computing process of Jacobian to make use of the sparsity of
+the Jacobian matrix. Assuming the sparsity pattern is unchanged through solving
+the ODE system, if there exists a set of columns in the sparse Jacobian matrix
+that has totally different nonzero rows, that set of columns can be evaluated at
+the same time. Such sets can be found using matrix colouring algorithm described
+in Hossain \& Steihaug's paper "Optimal Direct determination of sparse Jacobian
+matrices" \cite{four}. There are also two implementations of matrix colouring algorithm for
+sparse Jacobians: mauro3's \texttt{MatrixColorings.jl} package
+(\url{https://github.com/mauro3/MatrixColorings.jl}) and Petsc's matrix colouring code
+(\url{https://www.mcs.anl.gov/petsc/petsc-current/src/mat/color/interface/matcoloring.c.html}).
+
+\subsubsection{Implementation Details}
+\label{sec:org48112c4}
+The sparsity pattern can be either supplied by the user in the form of a sparse
+matrix or by evaluating the Jacobian matrix at a randomly perturbed initial
+point. Once having the Jacobian matrix, a column intersection graph can be built
+where columns are vertices and two vertices are connected when respective
+columns share at least one nonzero row. Then the colouring algorithm can be
+applied to the graph to find out a colouring scheme that every edge have
+vertices of different colours, and the set of columns with the same colour is
+the intended set. While simply assigning vertices with different colours
+certainly makes a solution, finding out the optimal scheme that minimizes the
+number of colours is a NP-Complete problem. So instead of finding the optimal
+solution, A heuristic algorithm is used to find a "good enough" result.
+
+Then, I will modify the differentiation process to differentiate variables with
+the same colour simultaneously. Typically, the differentiation process of
+Jacobian matrix loops over all the variables and perturbs/seeds one variable at
+a time. The collected perturbed/dual number columns stack in order to form the
+Jacobian matrix. When multiple variables are excited simultaneously, the result
+column can be seen as the sum of result columns excited separately. Since those
+columns don't share nonzero rows, they can be retrieved from the sum according
+to the sparsity pattern. As looping through the sets produced by colouring
+algorithm, we stack all the retrieved columns to form the Jacobian matrix. An
+option will be added on whether to produce the Jacobian matrix in sparse form.
+
+\subsection{Stretch Goal 1: Parallel Rosenbrock method}
+\label{sec:org48f3091}
+There is a parallel Rosenbrock method available in Ponalagusamy's paper \cite{five} with
+the potential to run on GPUs. I will implement it to expolit the parallel
+structure of multicore CPUs and GPUs. The parallel solver might need some
+special treatment, so the previous general Rosenbrock structure may not be
+applicable. If not, I would instead develop the method based on existing
+Rosenbrock methods.
+
+\subsection{Stretch Goal 2: Jacobian reuse}
+\label{sec:org99f1ddc}
+Jacobian reuse is critical for the performance of ROSW method and other implicit
+methods. The current reuse method in \texttt{OrdinaryDiffEq.jl} is rather conservative
+especially for large ODEs compared to some established ODE solvers like CVODE.
+Kennedy and Carpenter's review \cite{six} on DIRK also mentioned some advanced Jacobian
+reuse method. However, both CVODE and the paper only have reuse algorithm for
+implicit with Newton's method where both number of iteration steps and local
+error can be used to determine whether to reuse the Jacobian matrix, while in
+Rosenbrock method we only have one factor: the estimate of local truncation
+error. As a result, I believe it is better to start from implementing reuse
+method of implicit solvers with Newton's method according to CVODE's code and
+Kennedy\&Carpenter's paper. Then, I will try to improve the reuse method for
+Rosenbrock solvers based on experiments and previous experiences. 
+
+\section{Potential Difficulties}
+\label{sec:orgfe0dd28}
+It is difficult to write a decent Jacobian reuse algorithm since the Jacobian
+matrix is problem-specific. Small ODEs might benefit from the frequent Jacobian
+update to gain high accuracy, while large ODEs usually prefer as little Jacobian
+evaluations as possible due to their high cost. Heuristics are needed to
+determine which reuse scheme is applied according to the problem, but such
+heuristics require lots of experiments. So, I allocate a long period in tackling
+it and assign it as the stretch goal to ensure that I would at least finish
+previous goals before I'm stuck by this problem. 
+
+\section{Potential Mentors}
+\label{sec:org96c5f5e}
+Yingbo Ma would be my primary mentor, and Christopher Rackauckas would be my
+secondary mentor. 
+
+\section{Milestones}
+\label{sec:org8fb4a86}
+\begin{itemize}
+\item \textbf{Community Bonding: April 9 --- May 16}
+I will read codes in \texttt{OrdinaryDiffEq.jl} and try to be familiar with the
+coding style of the community while keeping contact with my mentors.
+\item \textbf{First Milestone --- General Rosenbrock and SDIRK solvers with new adaptive\\
+Rosenbrock-W methods: May 17 --- June 14}
+In this period, I will implement the general Rosenbrock and SDIRK solvers,
+and add ROSW methods using the general solver. It is easy to implement all
+the features, but it needs some care to achieve similar performance as those
+handwriting methods.
+\item \textbf{First Evaluation: June 17 --- June 21}
+There will be general Rosenbrock/SDIRK solver with adaptive Rosenbrock-W
+methods by June 21st.
+\item \textbf{Second Milestone --- Sparse Jacobian Handling: June 23 --- July 19}
+Thanks to previous works, this part is almost purely coding work. It may
+take some time to discuss how to expose respective APIs to users and I would
+expect to have a two-week holiday at the beginning of July. Other than that,
+everything will progress swiftly.
+\item \textbf{Second Evaluation: July 22 --- July 26}
+New options will be added to the solve interface to accelerate the
+evaluation of sparse Jacobian.
+\item \textbf{Third Milestone --- Parallel Rosenbrock method and Jacobian reuse algorithm: July 29 --- Aug 23}
+I'll firstly tackle the first stretch goal of the parallel Rosenbrock method
+in the first week. Then, I'll devote the rest of time to the improvement of
+Jacobian reuse algorithm. I will at least port some Jacobian reuse
+algorithms for implicit methods with my mentor Yingbo Ma. If everything goes
+well, I'm hoping to find some good heuristics for Rosenbrock methods
+according to benchmarks.
+\item \textbf{Third Evaluation: Aug 26 --- Aug 30}
+There will be a parallel Rosenbrock solver available in \texttt{OrdinaryDiffEq.jl}
+and a significant reduction of Jacobian evaluations when solving large ODE
+problems using implicit and Rosenbrock methods.
+\end{itemize}
+
+\section{Summer Logistics}
+\label{sec:orgd440ead}
+I can work 40 hours per week from mid of May to September, but I'll have about
+2-3 weeks for holiday in June and July. In general, I can devote at least 400
+hours in this project.
+
+\section{Code Portfolio}
+\label{sec:orga67ee27}
+I have contributed a PR on adding a new Rosenbrock-W solver to \texttt{OrdinaryDiffEq.jl}:
+\begin{itemize}
+\item add Rosenbrock-W method 6S4O(S) (\url{https://github.com/JuliaDiffEq/OrdinaryDiffEq.jl/pull/701})
+\end{itemize}
+
+\section{Deliverables}
+\label{sec:orgd12e9c1}
+\begin{itemize}
+\item General Rosenbrock/SDIRK solver
+\item Adaptive Rosenbrock-W solvers
+\item A parallel Rosenbrock solver
+\item New option for sparse matrix
+\item Fewer Jacobian evaluations
+\end{itemize}
+
+\section{About Me}
+\label{sec:org9503bdc}
+I am a final year undergraduate majored in Atmospheric Science at the University
+of Manchester. I'm probably going to the MSc program of Computing Science and
+Engineering at ETHz. I have been using Julia extensively since last year to
+develop an atmospheric chemistry box model JlBox as my final year project. The
+model invokes \texttt{DifferentialEquations.jl} for solving ODEs with thousands of
+variables, so the performance of the ODE solver is a great concern to me.
+
+\subsection{Academic Details}
+\label{sec:org239a036}
+\begin{itemize}
+\item University: the University of Manchester
+\item Major: Atmospheric Science (final year)
+\item GPA: 3.85/4.0
+\end{itemize}
+
+\subsection{Contact Information}
+\label{sec:orgc3beb77}
+\begin{itemize}
+\item Email: huanglangwen@outlook.com
+\item Github: huanglangwen
+\end{itemize}
+
+\begin{thebibliography}{9}
+\bibitem{one}
+	A. Sandu, D. N. Daescu, and G. R. Carmichael, 
+	\emph{Direct and adjoint sensitivity analysis of chemical kinetic systems with KPP: I - theory and software tools},
+	 Atmos. Environ., vol. 37, no. 36, pp. 5097–5114, 2003.
+\bibitem{two}
+	J. Rang and L. Angermann, 
+	\emph{New Rosenbrock W-methods of order 3 for partial differential algebraic equations of index 1},
+	in BIT Numerical Mathematics,
+	vol. 45, no. 4, pp. 761–787, 2005.
+\bibitem{three}
+	E. Novikov, Y. Shitov, and Y. Shokin, 
+	\emph{A class of (m,k)-methods for solving stiff systems},
+	Zh.vychisl.Mat.Fiz., vol. 29, no. 2, pp. 194–201, 1989.
+\bibitem{four}
+	S. Hossain and T. Steihaug, 
+	\emph{Optimal direct determination of sparse Jacobian matrices},
+	Optim. Methods Softw., vol. 28, no. 6, pp. 1218–1232, 2013.
+\bibitem{five}
+	R. Ponalagusamy and K. Ponnammal,
+	\emph{A Parallel Fourth Order Rosenbrock Method: Construction, Analysis and Numerical Comparison},
+	Int. J. Appl. Comput. Math., vol. 1, no. 1, pp. 45–68, Sep. 2014.
+\bibitem{six}
+	C. A. Kennedy and M. H. Carpenter,
+	\emph{Diagonally Implicit Runge-Kutta Methods for Ordinary Differential Equations. A Review},
+	2016.
+\end{thebibliography}
+\end{document}
